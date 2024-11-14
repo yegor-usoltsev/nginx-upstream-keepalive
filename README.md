@@ -87,12 +87,17 @@ In the `curl` output, you should see:
 This indicates that `curl` opened a connection for the first request and reused it for the next two. Additionally, in the Go server logs, you should see:
 
 ```
-Received request from 192.168.107.1:46474 | Protocol: HTTP/1.1 | Will be closed: false
-Received request from 192.168.107.1:46474 | Protocol: HTTP/1.1 | Will be closed: false
-Received request from 192.168.107.1:46474 | Protocol: HTTP/1.1 | Will be closed: false
+Received request from 192.168.107.1:55694 | Protocol: HTTP/1.1 | Will be closed: false
+...
+Received request from 192.168.107.1:55694 | Protocol: HTTP/1.1 | Will be closed: false
+...
+Received request from 192.168.107.1:55694 | Protocol: HTTP/1.1 | Will be closed: false
+Request headers:
+  User-Agent: curl/8.7.1
+  Accept: */*
 ```
 
-Each request uses the same port (`46474`), confirming that the **connection was reused**.
+Each request uses the same port (`55694`), confirming that the **connection was reused**.
 
 ### Step 1: NGINX with Standard `proxy_pass`
 
@@ -114,12 +119,18 @@ curl -sv http://localhost:8081 http://localhost:8081 http://localhost:8081
 ```
 
 ```
-Received request from 192.168.107.2:42400 | Protocol: HTTP/1.0 | Will be closed: true
-Received request from 192.168.107.2:42414 | Protocol: HTTP/1.0 | Will be closed: true
-Received request from 192.168.107.2:42416 | Protocol: HTTP/1.0 | Will be closed: true
+Received request from 192.168.107.3:42110 | Protocol: HTTP/1.0 | Will be closed: true
+...
+Received request from 192.168.107.3:42122 | Protocol: HTTP/1.0 | Will be closed: true
+...
+Received request from 192.168.107.3:42136 | Protocol: HTTP/1.0 | Will be closed: true
+Request headers:
+  Connection: close
+  User-Agent: curl/8.7.1
+  Accept: */*
 ```
 
-In the Go server logs, you will see that each request originates from a different port, showing that **connections were not reused**. This happens because NGINX defaults to HTTP/1.0 for upstream connections, which lacks connection reuse.
+In the Go server logs, you will see that each request originates from different ports (`42110`, `42122`, `42136`), showing that **connections were not reused**. This happens because NGINX defaults to `HTTP/1.0` for upstream connections, which lacks connection reuse.
 
 ### Step 2: NGINX Upgraded to HTTP/1.1
 
@@ -143,12 +154,18 @@ curl -sv http://localhost:8082 http://localhost:8082 http://localhost:8082
 ```
 
 ```
-Received request from 192.168.107.3:60048 | Protocol: HTTP/1.1 | Will be closed: true
-Received request from 192.168.107.3:60050 | Protocol: HTTP/1.1 | Will be closed: true
-Received request from 192.168.107.3:60064 | Protocol: HTTP/1.1 | Will be closed: true
+Received request from 192.168.107.3:60914 | Protocol: HTTP/1.1 | Will be closed: true
+...
+Received request from 192.168.107.3:60918 | Protocol: HTTP/1.1 | Will be closed: true
+...
+Received request from 192.168.107.3:60926 | Protocol: HTTP/1.1 | Will be closed: true
+Request headers:
+  User-Agent: curl/8.7.1
+  Accept: */*
+  Connection: close
 ```
 
-The Go server logs show requests from different ports (`60048`, `60050`, `60064`), meaning **connections were not reused**. This happens because NGINX adds a `Connection: close` header by default, which instructs the upstream server to close the connection after each request.
+The Go server logs show requests from different ports (`60914`, `60918`, `60926`), meaning **connections were not reused**. This happens because NGINX adds a `Connection: close` header by default, which instructs the upstream server to close the connection after each request.
 
 ### Step 3: NGINX Without `Connection: close` Header
 
@@ -173,9 +190,14 @@ curl -sv http://localhost:8083 http://localhost:8083 http://localhost:8083
 ```
 
 ```
-Received request from 192.168.107.3:51356 | Protocol: HTTP/1.1 | Will be closed: false
-Received request from 192.168.107.3:51360 | Protocol: HTTP/1.1 | Will be closed: false
-Received request from 192.168.107.3:51370 | Protocol: HTTP/1.1 | Will be closed: false
+Received request from 192.168.107.3:49260 | Protocol: HTTP/1.1 | Will be closed: false
+...
+Received request from 192.168.107.3:49270 | Protocol: HTTP/1.1 | Will be closed: false
+...
+Received request from 192.168.107.3:49274 | Protocol: HTTP/1.1 | Will be closed: false
+Request headers:
+  User-Agent: curl/8.7.1
+  Accept: */*
 ```
 
 Despite removing `Connection: close`, NGINX still **does not reuse connections**, closing them automatically after each request.
@@ -209,12 +231,17 @@ curl -sv http://localhost:8084 http://localhost:8084 http://localhost:8084
 ```
 
 ```
-Received request from 192.168.107.3:59332 | Protocol: HTTP/1.1 | Will be closed: false
-Received request from 192.168.107.3:59332 | Protocol: HTTP/1.1 | Will be closed: false
-Received request from 192.168.107.3:59332 | Protocol: HTTP/1.1 | Will be closed: false
+Received request from 192.168.107.3:55980 | Protocol: HTTP/1.1 | Will be closed: false
+...
+Received request from 192.168.107.3:55980 | Protocol: HTTP/1.1 | Will be closed: false
+...
+Received request from 192.168.107.3:55980 | Protocol: HTTP/1.1 | Will be closed: false
+Request headers:
+  User-Agent: curl/8.7.1
+  Accept: */*
 ```
 
-Finally! In the Go server logs, all requests come from the same port, confirming that the **connection was reused**.
+Finally! In the Go server logs, all requests come from the same port (`55980`), confirming that the **connection was reused**.
 
 ## References
 

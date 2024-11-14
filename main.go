@@ -5,7 +5,10 @@ import (
 	"net/http"
 )
 
-const KeepAlivesEnabled = true // Enabled by default
+const (
+	KeepAlivesEnabled = true // Enabled by default in net/http.Server
+	LogRequestHeaders = true
+)
 
 func main() {
 	srv := &http.Server{
@@ -23,5 +26,13 @@ func main() {
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received request from %s | Protocol: %s | Will be closed: %t", r.RemoteAddr, r.Proto, r.Close || !KeepAlivesEnabled)
+	if LogRequestHeaders {
+		log.Println("Request headers:")
+		for name, values := range r.Header {
+			for _, value := range values {
+				log.Printf("  %s: %s", name, value)
+			}
+		}
+	}
 	w.Write([]byte("Hello, World\n"))
 }
