@@ -1,6 +1,6 @@
 # nginx-upstream-keepalive
 
-This repository demonstrates the proper configuration for enabling HTTP keep-alive on upstream servers when using NGINX as a reverse proxy. Enabling HTTP keep-alive in this setup can significantly improve performance by:
+This repository demonstrates the proper configuration for enabling HTTP keep-alive on upstream servers when using [NGINX](https://github.com/nginx/nginx) as a reverse proxy. Enabling HTTP keep-alive in this setup can significantly improve performance by:
 
 - **Reducing CPU load** on upstream servers by minimizing the number of new connections required.
 - **Improving request latency** by reusing connections, which also enhances the ability to handle high request volumes.
@@ -248,3 +248,43 @@ Finally! In the Go server logs, all requests come from the same port (`55980`), 
 - [NGINX blog: 10 Tips for 10x Application Performance](https://www.f5.com/company/blog/nginx/10-tips-for-10x-application-performance#web-server-tuning) (Tip 9 – Tune Your Web Server for Performance)
 - [NGINX blog: HTTP Keepalive Connections and Web Performance](https://www.f5.com/company/blog/nginx/http-keepalives-and-web-performance)
 - [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)
+
+## Bonus: Comparing NGINX with Other Reverse Proxies
+
+I also tested several popular open-source projects commonly used as reverse proxies, each with its default configuration:
+
+- [Apache HTTP Server](https://github.com/apache/httpd) (port **9090**)
+- [Caddy](https://github.com/caddyserver/caddy) (port **9091**)
+- [Envoy](https://github.com/envoyproxy/envoy) (port **9092**)
+- [HAProxy](https://github.com/haproxy/haproxy) (port **9093**)
+- [Traefik](https://github.com/traefik/traefik) (port **9094**)
+
+All configurations for these proxies can be found in the **[bonus](bonus)** directory.
+
+Results: **All of these proxies use HTTP keep-alive by default**, unlike NGINX, which requires additional setup.
+
+To run these tests yourself, start Docker Compose with the `bonus` profile:
+
+```shell
+docker compose --profile bonus up -d --build
+```
+
+To observe logs all applications, use:
+
+```shell
+docker compose --profile bonus logs -f
+```
+
+When finished, stop all applications with:
+
+```shell
+docker compose --profile bonus down
+```
+
+To send a sequence of HTTP requests to each proxy:
+
+```bash
+for PORT in 9090 9091 9092 9093 9094; do
+  curl -sv http://localhost:$PORT http://localhost:$PORT http://localhost:$PORT
+done
+```

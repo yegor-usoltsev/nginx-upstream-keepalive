@@ -16,3 +16,62 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - golang
+
+  apache:
+    image: httpd:2.4.62-alpine
+    ports:
+      - 9090:9090
+    volumes:
+      - ./bonus/apache.conf:/usr/local/apache2/conf/httpd.conf:ro
+    depends_on:
+      - golang
+    profiles:
+      - bonus
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    ports:
+      - 9091:9091
+    volumes:
+      - ./bonus/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - golang
+    profiles:
+      - bonus
+
+  envoy:
+    image: envoyproxy/envoy:v1.32.1
+    ports:
+      - 9092:9092
+    volumes:
+      - ./bonus/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - golang
+    profiles:
+      - bonus
+
+  haproxy:
+    image: haproxy:3.0.6-alpine
+    ports:
+      - 9093:9093
+    volumes:
+      - ./bonus/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - golang
+    profiles:
+      - bonus
+
+  traefik:
+    image: traefik:3.2.0
+    command:
+      - --accesslog=true
+      - --entryPoints.web.address=:9094
+      - --providers.file.filename=/mnt/traefik.yaml
+    ports:
+      - 9094:9094
+    volumes:
+      - ./bonus/traefik.yaml:/mnt/traefik.yaml:ro
+    depends_on:
+      - golang
+    profiles:
+      - bonus

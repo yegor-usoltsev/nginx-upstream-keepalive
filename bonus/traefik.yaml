@@ -1,0 +1,12 @@
+http:
+  routers:
+    golang-router:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/`)
+      service: golang-service
+  services:
+    golang-service:
+      loadBalancer:
+        servers:
+          - url: http://golang:8080

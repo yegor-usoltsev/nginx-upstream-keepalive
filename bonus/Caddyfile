@@ -1,0 +1,6 @@
+:9091 {
+  log {
+    output stdout
+  }
+  reverse_proxy golang:8080
+}
