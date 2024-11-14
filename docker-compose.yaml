@@ -1,0 +1,15 @@
+services:
+
+  golang:
+    build: .
+    ports:
+      - 8080:8080
+
+  nginx:
+    image: nginx:1.27.2-alpine
+    ports:
+      - 8081:8081
+      - 8082:8082
+      - 8083:8083
+    volumes:
+      - ./nginx-configs:/etc/nginx/conf.d
