@@ -66,6 +66,7 @@ services:
     command:
       - --accesslog=true
       - --entryPoints.web.address=:9094
+      - --experimental.fastProxy
       - --providers.file.filename=/mnt/traefik.yaml
     ports:
       - 9094:9094
