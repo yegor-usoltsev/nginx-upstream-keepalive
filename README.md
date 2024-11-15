@@ -24,7 +24,8 @@ server {
 }
 
 upstream backend {
-    server ...;
+    # 127.0.0.1:8080 is an example here
+    server 127.0.0.1:8080;
     # Maintain up to 16 idle keep-alive connections from NGINX to upstream servers
     keepalive 16;
 }
