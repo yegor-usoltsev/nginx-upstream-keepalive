@@ -289,3 +289,11 @@ for PORT in 9090 9091 9092 9093 9094; do
   curl -sv http://localhost:$PORT http://localhost:$PORT http://localhost:$PORT
 done
 ```
+
+## Contributing
+
+Pull requests are welcome. For major changes, please [open an issue](https://github.com/yegor-usoltsev/nginx-upstream-keepalive/issues/new) first to discuss what you would like to change.
+
+## License
+
+[MIT](https://github.com/yegor-usoltsev/nginx-upstream-keepalive/blob/main/LICENSE)
