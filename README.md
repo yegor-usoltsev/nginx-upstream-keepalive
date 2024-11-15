@@ -24,7 +24,7 @@ server {
 }
 
 upstream backend {
-    # 127.0.0.1:8080 is an example here
+    # 127.0.0.1:8080 is an example upstream server
     server 127.0.0.1:8080;
     # Maintain up to 16 idle keep-alive connections from NGINX to upstream servers
     keepalive 16;
@@ -39,7 +39,7 @@ This repository includes the following files:
 - **`nginx.conf`**: A minimal NGINX configuration file with 4 `server` blocks:
   - The 1st block (port **8081**) uses only the standard `proxy_pass`.
   - The 2nd block (port **8082**) adds `proxy_http_version 1.1`.
-  - The 3rt block (port **8083**) adds `proxy_set_header Connection ""`.
+  - The 3rd block (port **8083**) adds `proxy_set_header Connection ""`.
   - The 4th block (port **8084**) includes an `upstream` block with `keepalive` enabled.
 - **`docker-compose.yaml` & `Dockerfile`**: A Docker Compose setup to run the Go server with NGINX as a reverse proxy.
 
