@@ -18,9 +18,17 @@ server {
         proxy_pass http://backend;
         # Use HTTP/1.1 instead of HTTP/1.0 for upstream connections
         proxy_http_version 1.1;
-        # Remove any "Connection: close" header
-        proxy_set_header Connection "";
+        # Remove any "Connection: close" header and handle WebSockets (see "map" below)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
     }
+}
+
+# If the "Upgrade" header is present and non-empty, forward "Connection: Upgrade".
+# Otherwise, do not forward the "Connection" header.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    "" "";
 }
 
 upstream backend {
@@ -203,6 +211,42 @@ Request headers:
 
 Despite removing `Connection: close`, NGINX still **does not reuse connections**, closing them automatically after each request.
 
+### Step 3.1: Fixing WebSocket Support
+
+A keen reader might notice that the `Connection` header is also essential for WebSocket connections. When establishing a WebSocket connection (e.g., in JavaScript: `let ws = new WebSocket("ws://localhost:8080")`), the client sends the following headers:
+
+```http
+Connection: Upgrade
+Upgrade: websocket
+```
+
+However, our current configuration removes the `Connection` header, which breaks WebSocket connections. Let's fix this issue with the following approach:
+
+- If the `Upgrade` header is present and non-empty, forward `Connection: Upgrade`.
+- Otherwise, do not forward the `Connection` header.
+
+To achieve this, we use the `map` directive. The `map` directive in NGINX allows us to create a mapping between a variable's value (in this case, `$http_upgrade`) and the output value assigned to another variable (here, `$connection_upgrade`). This is useful for dynamically setting configuration values based on request properties.
+
+Here’s the updated configuration which properly handles WebSocket connections:
+
+```diff
+ server {
+     listen 8083;
+     location / {
+         proxy_pass http://golang:8080;
+         proxy_http_version 1.1;
+-        proxy_set_header Connection "";
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection $connection_upgrade;
+     }
+ }
+
++map $http_upgrade $connection_upgrade {
++    default upgrade;
++    "" "";
++}
+```
+
 ### Step 4: NGINX with `keepalive`
 
 To enable connection reuse, define an `upstream` block with `keepalive` (see [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)). This specifies the maximum number of idle keep-alive connections per worker process. Here is the final configuration:
@@ -215,8 +259,14 @@ To enable connection reuse, define an `upstream` block with `keepalive` (see [NG
 -        proxy_pass http://golang:8080;
 +        proxy_pass http://backend;
          proxy_http_version 1.1;
-         proxy_set_header Connection "";
+         proxy_set_header Upgrade $http_upgrade;
+         proxy_set_header Connection $connection_upgrade;
      }
+ }
+
+ map $http_upgrade $connection_upgrade {
+     default upgrade;
+     "" "";
  }
 
 +upstream backend {
