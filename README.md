@@ -296,6 +296,7 @@ Finally! In the Go server logs, all requests come from the same port (`55980`), 
 
 ## References
 
+- [NGINX blog: Avoiding the Top 10 NGINX Configuration Mistakes](https://www.f5.com/company/blog/nginx/avoiding-top-10-nginx-configuration-mistakes#no-keepalives) (Mistake 3: Not Enabling Keepalive Connections to Upstream Servers)
 - [NGINX blog: 10 Tips for 10x Application Performance](https://www.f5.com/company/blog/nginx/10-tips-for-10x-application-performance#web-server-tuning) (Tip 9 – Tune Your Web Server for Performance)
 - [NGINX blog: HTTP Keepalive Connections and Web Performance](https://www.f5.com/company/blog/nginx/http-keepalives-and-web-performance)
 - [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)
