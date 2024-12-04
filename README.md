@@ -34,8 +34,8 @@ map $http_upgrade $connection_upgrade {
 upstream backend {
     # 127.0.0.1:8080 is an example upstream server
     server 127.0.0.1:8080;
-    # Maintain up to 16 idle keep-alive connections from NGINX to upstream servers
-    keepalive 16;
+    # Maintain 2 idle keep-alive connections to upstream servers from each worker process
+    keepalive 2;
 }
 ```
 
@@ -249,7 +249,7 @@ Here’s the updated configuration which properly handles WebSocket connections:
 
 ### Step 4: NGINX with `keepalive`
 
-To enable connection reuse, define an `upstream` block with `keepalive` (see [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)). This specifies the maximum number of idle keep-alive connections per worker process. Here is the final configuration:
+To enable connection reuse, define an `upstream` block with `keepalive` (see [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)). This specifies the number of idle keep-alive connections per worker process. Here is the final configuration:
 
 ```diff
  server {
@@ -271,9 +271,14 @@ To enable connection reuse, define an `upstream` block with `keepalive` (see [NG
 
 +upstream backend {
 +    server golang:8080;
-+    keepalive 16;
++    keepalive 2;
 +}
 ```
+
+> [!NOTE]  
+> Note that the `keepalive` directive does not limit the total number of connections to upstream servers that an NGINX worker process can open – this is a common misconception. So the parameter to `keepalive` does not need to be as large as you might think.\
+> We recommend setting the parameter to twice the number of servers listed in the `upstream` block. This is large enough for NGINX to maintain keepalive connections with all the servers, but small enough that upstream servers can process new incoming connections as well.\
+> _Reference: [NGINX blog: Avoiding the Top 10 NGINX Configuration Mistakes](https://www.f5.com/company/blog/nginx/avoiding-top-10-nginx-configuration-mistakes#no-keepalives) (Mistake 3: Not Enabling Keepalive Connections to Upstream Servers)_
 
 Run 3 requests to port **8084**:
 
