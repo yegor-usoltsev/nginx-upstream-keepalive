@@ -8,6 +8,7 @@ The Go server logs the protocol and peer address for each request, so you can se
 
 - [Quick start](#quick-start)
 - [Compare the NGINX configurations](#compare-the-nginx-configurations)
+- [Configuration](#configuration)
 - [WebSocket requests](#websocket-requests)
 - [Other proxy examples](#other-proxy-examples)
 - [NGINX version note](#nginx-version-note)
@@ -34,7 +35,7 @@ Inspect the Go server log:
 docker compose logs -f golang
 ```
 
-For port 8084, the Go log should show HTTP/1.1 requests with the same peer address and port. Stop the services with `docker compose down`.
+For port 8084, the Go log should show HTTP/1.1 requests with the same peer address and port. To confirm that the Go server itself supports keep-alive, send the same three requests to port 8080 and check that curl reports `Re-using existing connection`. Stop the services with `docker compose down`.
 
 ## Compare the NGINX configurations
 
@@ -85,7 +86,7 @@ server {
 }
 ```
 
-The `keepalive` value is the maximum number of idle upstream connections cached per NGINX worker; it does not limit the total number of connections a worker can open. The value `2` is for this demonstration.
+The `keepalive` value is the maximum number of idle upstream connections cached per NGINX worker; it does not limit the total number of connections a worker can open. NGINX recommends a value of about twice the number of servers in the `upstream` block: large enough to keep connections to every server, small enough that upstream servers can still accept new connections. The value `2` fits this single-server demonstration.
 
 ## WebSocket requests
 
@@ -128,7 +129,10 @@ The Compose file pins `nginx:1.27.2-alpine`; the port comparison above reflects 
 
 ## References
 
-- [NGINX upstream module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html)
+- [NGINX upstream module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)
+- [NGINX blog: Avoiding the Top 10 NGINX Configuration Mistakes](https://www.f5.com/company/blog/nginx/avoiding-top-10-nginx-configuration-mistakes#no-keepalives) (mistake 3: not enabling keepalive connections to upstream servers)
+- [NGINX blog: HTTP Keepalive Connections and Web Performance](https://www.f5.com/company/blog/nginx/http-keepalives-and-web-performance)
+- [NGINX blog: 10 Tips for 10x Application Performance](https://www.f5.com/company/blog/nginx/10-tips-for-10x-application-performance#web-server-tuning) (tip 9)
 - [Discussion that prompted this example](https://github.com/antonputra/tutorials/pull/334)
 
 ## Contributing
