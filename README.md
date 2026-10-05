@@ -1,355 +1,140 @@
 # nginx-upstream-keepalive
 
-This repository demonstrates the proper configuration for enabling HTTP keep-alive on upstream servers when using [NGINX](https://github.com/nginx/nginx) as a reverse proxy. Enabling HTTP keep-alive in this setup can significantly improve performance by:
+A runnable comparison of four NGINX 1.27.2 reverse-proxy configurations against a logging Go server. It shows how to reuse HTTP connections from NGINX to an upstream: use HTTP/1.1, clear the default `Connection: close` header, and configure an upstream keepalive cache.
 
-- **Reducing CPU load** on upstream servers by minimizing the number of new connections required.
-- **Improving request latency** by reusing connections, which also enhances the ability to handle high request volumes.
+The Go server logs the protocol and peer address for each request, so you can see whether NGINX reuses an upstream connection.
 
-This repository was created to address questions raised in the [following Pull Request](https://github.com/antonputra/tutorials/pull/334).
+## Contents
 
-## TL;DR
+- [Quick start](#quick-start)
+- [Compare the NGINX configurations](#compare-the-nginx-configurations)
+- [WebSocket requests](#websocket-requests)
+- [Other proxy examples](#other-proxy-examples)
+- [NGINX version note](#nginx-version-note)
 
-To configure NGINX optimally as a reverse proxy with HTTP keep-alive support, use the following configuration:
+## Quick start
+
+Prerequisites: Docker Compose and curl.
+
+Start the Go server and NGINX:
+
+```sh
+docker compose up -d --build
+```
+
+Send three requests through the keepalive-enabled NGINX server:
+
+```sh
+curl -sv http://localhost:8084/ http://localhost:8084/ http://localhost:8084/
+```
+
+Inspect the Go server log:
+
+```sh
+docker compose logs -f golang
+```
+
+For port 8084, the Go log should show HTTP/1.1 requests with the same peer address and port. Stop the services with `docker compose down`.
+
+## Compare the NGINX configurations
+
+Run the same three-request sequence against each port:
+
+```sh
+for PORT in 8081 8082 8083 8084; do
+  echo "--- port $PORT ---"
+  curl -sv "http://localhost:$PORT/" "http://localhost:$PORT/" "http://localhost:$PORT/"
+done
+```
+
+The Go server log reports the upstream protocol, whether the request asked to close, and the peer address:
+
+| Port | Configuration | Expected upstream behavior |
+| --- | --- | --- |
+| 8081 | Default `proxy_pass` | HTTP/1.0; the connection closes after each request. |
+| 8082 | Adds `proxy_http_version 1.1` | HTTP/1.1, but `Connection: close` still prevents reuse. |
+| 8083 | Clears `Connection` unless the client requests an upgrade | HTTP/1.1; connections close after each request because no upstream keepalive cache is configured. |
+| 8084 | Adds an upstream block with `keepalive 2` | Repeated requests reuse an idle upstream connection. |
+
+The client-to-NGINX connection and the NGINX-to-upstream connection are separate. The Go server's peer address shows reuse on the upstream side.
+
+## Configuration
+
+This is the keepalive-enabled configuration used on port 8084:
 
 ```nginx
-server {
-    location / {
-        # Reference to "upstream" block with the name "backend" (see below)
-        proxy_pass http://backend;
-        # Use HTTP/1.1 instead of HTTP/1.0 for upstream connections
-        proxy_http_version 1.1;
-        # Remove any "Connection: close" header and handle WebSockets (see "map" below)
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-    }
-}
-
-# If the "Upgrade" header is present and non-empty, forward "Connection: Upgrade".
-# Otherwise, do not forward the "Connection" header.
 map $http_upgrade $connection_upgrade {
     default upgrade;
     "" "";
 }
 
 upstream backend {
-    # 127.0.0.1:8080 is an example upstream server
-    server 127.0.0.1:8080;
-    # Maintain 2 idle keep-alive connections to upstream servers from each worker process
+    server golang:8080;
     keepalive 2;
 }
-```
 
-## Overview
-
-This repository includes the following files:
-
-- **`main.go`**: A simple HTTP server implemented in Go, serving as the NGINX upstream. It listens on port **8080** and logs requests, making it easy to check if HTTP keep-alive is active.
-- **`nginx.conf`**: A minimal NGINX configuration file with 4 `server` blocks:
-  - The 1st block (port **8081**) uses only the standard `proxy_pass`.
-  - The 2nd block (port **8082**) adds `proxy_http_version 1.1`.
-  - The 3rd block (port **8083**) adds `proxy_set_header Connection ""`.
-  - The 4th block (port **8084**) includes an `upstream` block with `keepalive` enabled.
-- **`docker-compose.yaml` & `Dockerfile`**: A Docker Compose setup to run the Go server with NGINX as a reverse proxy.
-
-### Prerequisites
-
-To run this example, you’ll need **Docker Compose** and **curl** as the client.
-
-### Running
-
-To start the Go server and NGINX proxy, run:
-
-```shell
-docker compose up -d --build
-```
-
-To observe logs from both NGINX and the Go server, use:
-
-```shell
-docker compose logs -f
-```
-
-When finished, you can stop the applications with:
-
-```shell
-docker compose down
-```
-
-## Results
-
-### Step 0: Verifying Go Server Supports HTTP Keep-Alive
-
-First, ensure that the Go server supports HTTP keep-alive by making 3 consecutive requests directly to it on port **8080** using `curl`. Check if the connection is reused:
-
-```shell
-curl -sv http://localhost:8080 http://localhost:8080 http://localhost:8080
-```
-
-In the `curl` output, you should see:
-
-```
-* Connection #0 to host localhost left intact
-...
-* Re-using existing connection with host localhost
-```
-
-This indicates that `curl` opened a connection for the first request and reused it for the next two. Additionally, in the Go server logs, you should see:
-
-```
-Received request from 192.168.107.1:55694 | Protocol: HTTP/1.1 | Will be closed: false
-...
-Received request from 192.168.107.1:55694 | Protocol: HTTP/1.1 | Will be closed: false
-...
-Received request from 192.168.107.1:55694 | Protocol: HTTP/1.1 | Will be closed: false
-Request headers:
-  User-Agent: curl/8.7.1
-  Accept: */*
-```
-
-Each request uses the same port (`55694`), confirming that the **connection was reused**.
-
-### Step 1: NGINX with Standard `proxy_pass`
-
-Next, let's test NGINX with only the `proxy_pass` directive:
-
-```nginx
 server {
-    listen 8081;
+    listen 8084;
+
     location / {
-        proxy_pass http://golang:8080;
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
     }
 }
 ```
 
-Run 3 requests to port **8081**:
+The `keepalive` value is the maximum number of idle upstream connections cached per NGINX worker; it does not limit the total number of connections a worker can open. The value `2` is for this demonstration.
 
-```shell
-curl -sv http://localhost:8081 http://localhost:8081 http://localhost:8081
-```
+## WebSocket requests
 
-```
-Received request from 192.168.107.3:42110 | Protocol: HTTP/1.0 | Will be closed: true
-...
-Received request from 192.168.107.3:42122 | Protocol: HTTP/1.0 | Will be closed: true
-...
-Received request from 192.168.107.3:42136 | Protocol: HTTP/1.0 | Will be closed: true
-Request headers:
-  Connection: close
-  User-Agent: curl/8.7.1
-  Accept: */*
-```
+The map forwards `Upgrade` and sets `Connection: upgrade` when the client requests a protocol upgrade. Otherwise, the empty value removes the `Connection` header so regular HTTP upstream connections can be reused. WebSocket tunneling also requires an upstream application that supports WebSockets; the included Go handler is a plain HTTP server.
 
-In the Go server logs, you will see that each request originates from different ports (`42110`, `42122`, `42136`), showing that **connections were not reused**. This happens because NGINX defaults to `HTTP/1.0` for upstream connections, which lacks connection reuse.
+See the [NGINX WebSocket proxying guide](https://nginx.org/en/docs/http/websocket.html).
 
-### Step 2: NGINX Upgraded to HTTP/1.1
+## Other proxy examples
 
-Enable HTTP/1.1 by adding `proxy_http_version 1.1`:
+The optional Compose `bonus` profile compares the same Go upstream with Apache, Caddy, Envoy, HAProxy, and Traefik. Their configurations are in [bonus/](bonus/).
 
-```diff
- server {
--    listen 8081;
-+    listen 8082;
-     location / {
-         proxy_pass http://golang:8080;
-+        proxy_http_version 1.1;
-     }
- }
-```
+Start the examples:
 
-Run 3 requests to port **8082**:
-
-```shell
-curl -sv http://localhost:8082 http://localhost:8082 http://localhost:8082
-```
-
-```
-Received request from 192.168.107.3:60914 | Protocol: HTTP/1.1 | Will be closed: true
-...
-Received request from 192.168.107.3:60918 | Protocol: HTTP/1.1 | Will be closed: true
-...
-Received request from 192.168.107.3:60926 | Protocol: HTTP/1.1 | Will be closed: true
-Request headers:
-  User-Agent: curl/8.7.1
-  Accept: */*
-  Connection: close
-```
-
-The Go server logs show requests from different ports (`60914`, `60918`, `60926`), meaning **connections were not reused**. This happens because NGINX adds a `Connection: close` header by default, which instructs the upstream server to close the connection after each request.
-
-### Step 3: NGINX Without `Connection: close` Header
-
-Remove the `Connection: close` header by adding `proxy_set_header Connection "";`:
-
-```diff
- server {
--    listen 8082;
-+    listen 8083;
-     location / {
-         proxy_pass http://golang:8080;
-         proxy_http_version 1.1;
-+        proxy_set_header Connection "";
-     }
- }
-```
-
-Run 3 requests to port **8083**:
-
-```shell
-curl -sv http://localhost:8083 http://localhost:8083 http://localhost:8083
-```
-
-```
-Received request from 192.168.107.3:49260 | Protocol: HTTP/1.1 | Will be closed: false
-...
-Received request from 192.168.107.3:49270 | Protocol: HTTP/1.1 | Will be closed: false
-...
-Received request from 192.168.107.3:49274 | Protocol: HTTP/1.1 | Will be closed: false
-Request headers:
-  User-Agent: curl/8.7.1
-  Accept: */*
-```
-
-Despite removing `Connection: close`, NGINX still **does not reuse connections**, closing them automatically after each request.
-
-### Step 3.1: Fixing WebSocket Support
-
-A keen reader might notice that the `Connection` header is also essential for WebSocket connections. When establishing a WebSocket connection (e.g., in JavaScript: `let ws = new WebSocket("ws://localhost:8080")`), the client sends the following headers:
-
-```http
-Connection: Upgrade
-Upgrade: websocket
-```
-
-However, our current configuration removes the `Connection` header, which breaks WebSocket connections. Let's fix this issue with the following approach:
-
-- If the `Upgrade` header is present and non-empty, forward `Connection: Upgrade`.
-- Otherwise, do not forward the `Connection` header.
-
-To achieve this, we use the `map` directive. The `map` directive in NGINX allows us to create a mapping between a variable's value (in this case, `$http_upgrade`) and the output value assigned to another variable (here, `$connection_upgrade`). This is useful for dynamically setting configuration values based on request properties.
-
-Here’s the updated configuration which properly handles WebSocket connections:
-
-```diff
- server {
-     listen 8083;
-     location / {
-         proxy_pass http://golang:8080;
-         proxy_http_version 1.1;
--        proxy_set_header Connection "";
-+        proxy_set_header Upgrade $http_upgrade;
-+        proxy_set_header Connection $connection_upgrade;
-     }
- }
-
-+map $http_upgrade $connection_upgrade {
-+    default upgrade;
-+    "" "";
-+}
-```
-
-### Step 4: NGINX with `keepalive`
-
-To enable connection reuse, define an `upstream` block with `keepalive` (see [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)). This specifies the number of idle keep-alive connections per worker process. Here is the final configuration:
-
-```diff
- server {
--    listen 8083;
-+    listen 8084;
-     location / {
--        proxy_pass http://golang:8080;
-+        proxy_pass http://backend;
-         proxy_http_version 1.1;
-         proxy_set_header Upgrade $http_upgrade;
-         proxy_set_header Connection $connection_upgrade;
-     }
- }
-
- map $http_upgrade $connection_upgrade {
-     default upgrade;
-     "" "";
- }
-
-+upstream backend {
-+    server golang:8080;
-+    keepalive 2;
-+}
-```
-
-> [!NOTE]  
-> Note that the `keepalive` directive does not limit the total number of connections to upstream servers that an NGINX worker process can open – this is a common misconception. So the parameter to `keepalive` does not need to be as large as you might think.\
-> We recommend setting the parameter to twice the number of servers listed in the `upstream` block. This is large enough for NGINX to maintain keepalive connections with all the servers, but small enough that upstream servers can process new incoming connections as well.\
-> _Reference: [NGINX blog: Avoiding the Top 10 NGINX Configuration Mistakes](https://www.f5.com/company/blog/nginx/avoiding-top-10-nginx-configuration-mistakes#no-keepalives) (Mistake 3: Not Enabling Keepalive Connections to Upstream Servers)_
-
-Run 3 requests to port **8084**:
-
-```shell
-curl -sv http://localhost:8084 http://localhost:8084 http://localhost:8084
-```
-
-```
-Received request from 192.168.107.3:55980 | Protocol: HTTP/1.1 | Will be closed: false
-...
-Received request from 192.168.107.3:55980 | Protocol: HTTP/1.1 | Will be closed: false
-...
-Received request from 192.168.107.3:55980 | Protocol: HTTP/1.1 | Will be closed: false
-Request headers:
-  User-Agent: curl/8.7.1
-  Accept: */*
-```
-
-Finally! In the Go server logs, all requests come from the same port (`55980`), confirming that the **connection was reused**.
-
-## References
-
-- [NGINX blog: Avoiding the Top 10 NGINX Configuration Mistakes](https://www.f5.com/company/blog/nginx/avoiding-top-10-nginx-configuration-mistakes#no-keepalives) (Mistake 3: Not Enabling Keepalive Connections to Upstream Servers)
-- [NGINX blog: 10 Tips for 10x Application Performance](https://www.f5.com/company/blog/nginx/10-tips-for-10x-application-performance#web-server-tuning) (Tip 9 – Tune Your Web Server for Performance)
-- [NGINX blog: HTTP Keepalive Connections and Web Performance](https://www.f5.com/company/blog/nginx/http-keepalives-and-web-performance)
-- [NGINX docs: ngx_http_upstream_module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive)
-
-## Bonus: Comparing NGINX with Other Reverse Proxies
-
-I also tested several popular open-source projects commonly used as reverse proxies, each with its default configuration:
-
-- [Apache HTTP Server](https://github.com/apache/httpd) (port **9090**)
-- [Caddy](https://github.com/caddyserver/caddy) (port **9091**)
-- [Envoy](https://github.com/envoyproxy/envoy) (port **9092**)
-- [HAProxy](https://github.com/haproxy/haproxy) (port **9093**)
-- [Traefik](https://github.com/traefik/traefik) (port **9094**)
-
-All configurations for these proxies can be found in the **[bonus](bonus)** directory.
-
-Results: **All of these proxies use HTTP keep-alive by default**, unlike NGINX, which requires additional setup.
-
-To run these tests yourself, start Docker Compose with the `bonus` profile:
-
-```shell
+```sh
 docker compose --profile bonus up -d --build
 ```
 
-To observe logs all applications, use:
+Send three requests to each proxy:
 
-```shell
-docker compose --profile bonus logs -f
-```
-
-When finished, stop all applications with:
-
-```shell
-docker compose --profile bonus down
-```
-
-To send a sequence of HTTP requests to each proxy:
-
-```bash
+```sh
 for PORT in 9090 9091 9092 9093 9094; do
-  curl -sv http://localhost:$PORT http://localhost:$PORT http://localhost:$PORT
+  echo "--- port $PORT ---"
+  curl -sv "http://localhost:$PORT/" "http://localhost:$PORT/" "http://localhost:$PORT/"
 done
 ```
 
+Stop them with `docker compose --profile bonus down`.
+
+| Proxy | Port |
+| --- | ---: |
+| Apache | 9090 |
+| Caddy | 9091 |
+| Envoy | 9092 |
+| HAProxy | 9093 |
+| Traefik | 9094 |
+
+## NGINX version note
+
+The Compose file pins `nginx:1.27.2-alpine`; the port comparison above reflects that version. NGINX 1.29.7 changed the default proxy HTTP version to 1.1 and enabled the upstream keepalive cache by default, so the first stages behave differently on newer versions. See the [proxy module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html) and [upstream module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html) documentation.
+
+## References
+
+- [NGINX upstream module](https://nginx.org/en/docs/http/ngx_http_upstream_module.html)
+- [Discussion that prompted this example](https://github.com/antonputra/tutorials/pull/334)
+
 ## Contributing
 
-Pull requests are welcome. For major changes, please [open an issue](https://github.com/yegor-usoltsev/nginx-upstream-keepalive/issues/new) first to discuss what you would like to change.
+Pull requests are welcome. For major changes, please [open an issue](https://github.com/yegor-usoltsev/nginx-upstream-keepalive/issues/new) first.
 
 ## License
 
-[MIT](https://github.com/yegor-usoltsev/nginx-upstream-keepalive/blob/main/LICENSE)
+[MIT](LICENSE)
